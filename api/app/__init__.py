@@ -1,0 +1,1 @@
+"""Eventsee FastAPI application package."""

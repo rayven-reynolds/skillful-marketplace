@@ -2,20 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Sage design tokens ──────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --sage-dark:   #3D5C4A;
+  --sage-mid:    #5C7A65;
+  --sage-light:  #8AAF95;
+  --sage-pale:   #B8D4BF;
+  --sage-tint:   #EDF4EF;
+  --sage-bg:     #F5F8F5;
+  --sage-border: #C8D8CB;
+  --dark-text:   #1A261D;
+  --mid-text:    #4A6550;
+  --muted-text:  #7A9F80;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-jakarta), system-ui, sans-serif;
+  background: var(--sage-bg);
+  color: var(--dark-text);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-display {
+  font-family: var(--font-playfair), Georgia, serif;
 }

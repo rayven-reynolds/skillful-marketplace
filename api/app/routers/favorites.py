@@ -20,7 +20,7 @@ router = APIRouter(prefix="/favorites", tags=["favorites"])
 @router.get("")
 def list_favorites(
     db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User, Depends(require_roles(UserRole.client, UserRole.admin))],
+    user: Annotated[User, Depends(require_roles(UserRole.client, UserRole.planner, UserRole.admin))],
 ) -> List[Dict[str, str]]:
     """
     List planner ids favorited by the authenticated client.
@@ -41,7 +41,7 @@ def list_favorites(
 def add_favorite(
     planner_profile_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User, Depends(require_roles(UserRole.client, UserRole.admin))],
+    user: Annotated[User, Depends(require_roles(UserRole.client, UserRole.planner, UserRole.admin))],
 ) -> Dict[str, str]:
     """
     Save a planner for the authenticated user.
@@ -78,7 +78,7 @@ def add_favorite(
 def remove_favorite(
     planner_profile_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User, Depends(require_roles(UserRole.client, UserRole.admin))],
+    user: Annotated[User, Depends(require_roles(UserRole.client, UserRole.planner, UserRole.admin))],
 ) -> Response:
     """
     Remove a saved planner for the authenticated user.

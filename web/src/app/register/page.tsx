@@ -7,83 +7,122 @@ import { apiFetch } from "@/lib/api";
 
 type Me = { id: string; email: string; display_name: string | null; role: string };
 
-/**
- * Registration form supporting client or planner roles for local demos.
- */
+const inputCls =
+  "mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100";
+
 export default function RegisterPage() {
   const router = useRouter();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [role, setRole] = useState<"client" | "planner">("client");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
+    setLoading(true);
+    const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ") || null;
     try {
       await apiFetch<Me>("/auth/register", {
         method: "POST",
-        body: JSON.stringify({ email, password, display_name: displayName || null, role }),
+        body: JSON.stringify({ email, password, display_name: displayName }),
       });
       router.push("/browse");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
-    <div className="mx-auto max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-zinc-100">
-      <h1 className="text-2xl font-semibold">Create your Eventsee account</h1>
-      <form className="space-y-3" onSubmit={onSubmit}>
+    <div className="mx-auto max-w-md space-y-6 rounded-2xl bg-white p-8 shadow-sm ring-1 ring-zinc-100">
+      <div>
+        <h1 className="text-2xl font-semibold text-zinc-900">Create your account</h1>
+        <p className="mt-1 text-sm text-zinc-500">
+          Browse planners, save favourites, and get matched — for free.
+        </p>
+      </div>
+
+      <form className="space-y-4" onSubmit={onSubmit}>
+        <div className="flex gap-3">
+          <label className="flex-1 block text-xs font-medium text-zinc-700">
+            First name
+            <input
+              className={inputCls}
+              required
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="Jane"
+              autoComplete="given-name"
+            />
+          </label>
+          <label className="flex-1 block text-xs font-medium text-zinc-700">
+            Last name{" "}
+            <span className="font-normal text-zinc-400">(optional)</span>
+            <input
+              className={inputCls}
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="Doe"
+              autoComplete="family-name"
+            />
+          </label>
+        </div>
+
         <label className="block text-xs font-medium text-zinc-700">
-          Email
+          Email address
           <input
             type="email"
             required
-            className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+            className={inputCls}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
           />
         </label>
+
         <label className="block text-xs font-medium text-zinc-700">
-          Display name (optional)
-          <input
-            className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-          />
-        </label>
-        <label className="block text-xs font-medium text-zinc-700">
-          Password (min 8 characters)
+          Password{" "}
+          <span className="font-normal text-zinc-400">(min 8 characters)</span>
           <input
             type="password"
             minLength={8}
             required
-            className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+            className={inputCls}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
           />
         </label>
-        <fieldset className="text-xs text-zinc-800">
-          <legend className="font-medium text-zinc-700">I am signing up as</legend>
-          <div className="mt-2 flex gap-3">
-            <label className="flex items-center gap-2">
-              <input type="radio" name="role" checked={role === "client"} onChange={() => setRole("client")} />A host
-              hiring planners
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="radio" name="role" checked={role === "planner"} onChange={() => setRole("planner")} />A planner
-            </label>
-          </div>
-        </fieldset>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button type="submit" className="w-full rounded-full bg-rose-700 py-2 text-sm font-medium text-white">
-          Create account
+
+        {error && (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full rounded-full bg-rose-700 py-2.5 text-sm font-medium text-white transition hover:bg-rose-800 disabled:opacity-50"
+        >
+          {loading ? "Creating account…" : "Create account"}
         </button>
       </form>
+
+      <p className="text-sm text-zinc-600">
+        Want to offer your services?{" "}
+        <Link className="font-medium text-rose-700 underline" href="/become-a-planner">
+          Become a Planner
+        </Link>{" "}
+        after signing up.
+      </p>
+
       <p className="text-sm text-zinc-600">
         Already registered?{" "}
-        <Link className="text-rose-800 underline" href="/login">
+        <Link className="font-medium text-rose-700 underline" href="/login">
           Log in
         </Link>
       </p>

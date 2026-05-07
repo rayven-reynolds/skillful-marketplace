@@ -8,6 +8,8 @@ Eventsee MVP: Next.js (`web/`) + FastAPI (`api/`) + PostgreSQL. Premium is admin
 
 **Last verification:** `pytest` (API) and `npm run build` (web) completed successfully in CI-style runs.
 
+**Browse preview:** `/browse` renders six static planner cards (three personal, two corporate, one hybrid) with Unsplash portfolio covers, a sticky blurred nav, and a Personal / Corporate / All segmented control driven by `?segment=` so the filter is shareable without any client JS.
+
 ## Tasks
 
 - [x] 🟩 **Scaffold Next.js (`web/`)** — App Router, Tailwind, mobile-first shell.

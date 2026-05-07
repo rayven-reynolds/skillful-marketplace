@@ -25,7 +25,14 @@ export default function LoginPage() {
       });
       router.push("/browse");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      const raw = err instanceof Error ? err.message : "";
+      if (raw.includes("Invalid credentials") || raw.includes("credentials")) {
+        setError("No account found with those details. Please check your email or create an account.");
+      } else if (raw.includes("not found") || raw.includes("404")) {
+        setError("No account found. Please create an account first.");
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
     }
   }
 

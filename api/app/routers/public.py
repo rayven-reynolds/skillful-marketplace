@@ -11,8 +11,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import AvailabilityBlock, Booking, PlannerProfile, PortfolioItem, Review
-from app.schemas import PlannerPublic, PlannerDetail, PortfolioOut, ReviewOut
+from app.deps import get_current_user, get_optional_user
+from app.models import AvailabilityBlock, Booking, PlannerProfile, PortfolioItem, Review, User, UserRole
+from app.schemas import ListingPublic, PlannerPublic, PlannerDetail, PortfolioOut, ReviewIn, ReviewOut
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -107,15 +108,21 @@ def list_planners(
             AvailabilityBlock.end_ts > start,
         )
         q = q.where(~PlannerProfile.id.in_(busy))
-    rows = db.execute(q.offset(offset).limit(limit)).scalars().all()
+    rows = db.execute(
+        q.add_columns(User.display_name)
+        .join(User, PlannerProfile.user_id == User.id)
+        .offset(offset)
+        .limit(limit)
+    ).all()
     stats = _review_stats(db)
     out: list[PlannerPublic] = []
-    for p in rows:
+    for p, display_name in rows:
         avg_r, cnt = stats.get(p.id, (None, 0))
         out.append(
             PlannerPublic(
                 id=p.id,
                 slug=p.slug,
+                display_name=display_name,
                 bio=p.bio,
                 location_text=p.location_text,
                 price_min=p.price_min,
@@ -128,6 +135,7 @@ def list_planners(
                 is_premium=p.is_premium,
                 avg_rating=avg_r,
                 review_count=cnt,
+                instagram_url=p.instagram_url,
             )
         )
     return out
@@ -149,14 +157,20 @@ def get_planner_by_slug(slug: str, db: Annotated[Session, Depends(get_db)]) -> P
         HTTPException: When the slug does not exist.
     """
 
-    p = db.execute(select(PlannerProfile).where(PlannerProfile.slug == slug)).scalar_one_or_none()
-    if p is None:
+    row = db.execute(
+        select(PlannerProfile, User.display_name)
+        .join(User, PlannerProfile.user_id == User.id)
+        .where(PlannerProfile.slug == slug)
+    ).first()
+    if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Planner not found")
+    p, display_name = row
     stats = _review_stats(db)
     avg_r, cnt = stats.get(p.id, (None, 0))
     return PlannerDetail(
         id=p.id,
         slug=p.slug,
+        display_name=display_name,
         bio=p.bio,
         location_text=p.location_text,
         price_min=p.price_min,
@@ -170,6 +184,7 @@ def get_planner_by_slug(slug: str, db: Annotated[Session, Depends(get_db)]) -> P
         avg_rating=avg_r,
         review_count=cnt,
         timezone=p.timezone,
+        instagram_url=p.instagram_url,
     )
 
 
@@ -207,27 +222,148 @@ def list_portfolio(slug: str, db: Annotated[Session, Depends(get_db)]) -> list[P
 
 @router.get("/planners/by-slug/{slug}/reviews", response_model=list[ReviewOut])
 def list_reviews(slug: str, db: Annotated[Session, Depends(get_db)]) -> list[ReviewOut]:
-    """
-    List verified reviews for a planner (confirmed bookings only).
-
-    Args:
-        slug: Planner slug.
-        db: Database session.
-
-    Returns:
-        list[ReviewOut]: Reviews ordered newest first.
-    """
+    """List all reviews for a planner — booking-verified and direct."""
 
     p = db.execute(select(PlannerProfile).where(PlannerProfile.slug == slug)).scalar_one_or_none()
     if p is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Planner not found")
-    rows = db.execute(
+
+    # Direct reviews (planner_profile_id set)
+    direct = db.execute(
+        select(Review)
+        .where(Review.planner_profile_id == p.id)
+        .order_by(Review.created_at.desc())
+    ).scalars().all()
+
+    # Booking-verified reviews
+    verified = db.execute(
         select(Review)
         .join(Booking, Booking.id == Review.booking_id)
         .where(Booking.planner_profile_id == p.id)
         .order_by(Review.created_at.desc())
     ).scalars().all()
-    return [ReviewOut(id=r.id, rating=r.rating, body=r.body, created_at=r.created_at, verified=True) for r in rows]
+
+    # Merge, dedup by id, keep newest first
+    seen: set[uuid.UUID] = set()
+    merged: list[Review] = []
+    for r in [*direct, *verified]:
+        if r.id not in seen:
+            seen.add(r.id)
+            merged.append(r)
+    merged.sort(key=lambda r: r.created_at, reverse=True)
+
+    return [
+        ReviewOut(
+            id=r.id,
+            rating=r.rating,
+            body=r.body,
+            created_at=r.created_at,
+            verified=r.booking_id is not None,
+            reviewer_display_name=r.author.display_name if r.author else None,
+        )
+        for r in merged
+    ]
+
+
+@router.post("/planners/by-slug/{slug}/reviews", status_code=status.HTTP_201_CREATED)
+def create_review(
+    slug: str,
+    payload: ReviewIn,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Submit a direct review for a planner. One review per client per planner."""
+
+    if user.role == UserRole.planner:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only clients can leave reviews")
+
+    p = db.execute(select(PlannerProfile).where(PlannerProfile.slug == slug)).scalar_one_or_none()
+    if p is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Planner not found")
+
+    existing = db.execute(
+        select(Review).where(Review.planner_profile_id == p.id, Review.author_user_id == user.id)
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You have already reviewed this planner")
+
+    row = Review(
+        planner_profile_id=p.id,
+        author_user_id=user.id,
+        rating=payload.rating,
+        body=payload.body,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": str(row.id)}
+
+
+def _to_listing_public(
+    item: PortfolioItem, profile: PlannerProfile, owner: User, current: Optional[User]
+) -> ListingPublic:
+    """
+    Project a portfolio item + its owning planner into a ``ListingPublic``.
+
+    ``is_owner`` reflects whether the request session belongs to the planner
+    that owns the item. The edit endpoint re-checks ownership server-side, so
+    this flag is purely a UI hint.
+    """
+
+    return ListingPublic(
+        id=item.id,
+        title=item.title,
+        event_type=item.event_type,
+        photos=list(item.photos or []),
+        budget_breakdown=dict(item.budget_breakdown or {}),
+        planner_profile_id=profile.id,
+        planner_slug=profile.slug,
+        planner_display_name=owner.display_name,
+        is_owner=current is not None and current.id == owner.id,
+    )
+
+
+@router.get("/listings", response_model=list[ListingPublic])
+def list_all_listings(
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[Optional[User], Depends(get_optional_user)],
+) -> list[ListingPublic]:
+    """
+    Public catalog of every portfolio item with owner attribution.
+
+    Anyone (signed-in or not) can read this. The ``is_owner`` flag in the
+    response is ``True`` only for items belonging to the planner whose session
+    is attached to the request, which lets the UI render an Edit button only
+    on the caller's own rows.
+    """
+
+    rows = db.execute(
+        select(PortfolioItem, PlannerProfile, User)
+        .join(PlannerProfile, PortfolioItem.planner_profile_id == PlannerProfile.id)
+        .join(User, PlannerProfile.user_id == User.id)
+        .order_by(PortfolioItem.title)
+    ).all()
+    return [_to_listing_public(item, profile, owner, current) for item, profile, owner in rows]
+
+
+@router.get("/listings/{item_id}", response_model=ListingPublic, responses={404: {"description": "Listing not found."}})
+def get_listing(
+    item_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current: Annotated[Optional[User], Depends(get_optional_user)],
+) -> ListingPublic:
+    """Fetch a single listing for the edit page (auth optional)."""
+
+    item = db.get(PortfolioItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found")
+    profile = db.get(PlannerProfile, item.planner_profile_id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found")
+    owner = db.get(User, profile.user_id)
+    if owner is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found")
+    return _to_listing_public(item, profile, owner, current)
 
 
 @router.get("/planners/by-slug/{slug}/availability", response_model=list[dict])

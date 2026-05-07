@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import require_roles
 from app.models import AvailabilityBlock, PlannerProfile, PortfolioItem, User, UserRole
-from app.schemas import AvailabilityBlockOut, AvailabilityIn, PlannerUpsert, PortfolioIn, PortfolioOut
+from app.schemas import AvailabilityBlockOut, AvailabilityIn, ListingEdit, PlannerUpsert, PortfolioIn, PortfolioOut
 
 router = APIRouter(prefix="/planner", tags=["planner"])
 
@@ -116,6 +116,7 @@ def get_my_profile(
         "is_premium": p.is_premium,
         "premium_expires_at": p.premium_expires_at.isoformat() if p.premium_expires_at else None,
         "timezone": p.timezone,
+        "instagram_url": p.instagram_url,
     }
 
 
@@ -155,6 +156,7 @@ def update_my_profile(
     p.specialties = payload.specialties
     p.aesthetic_tags = payload.aesthetic_tags
     p.timezone = payload.timezone
+    p.instagram_url = payload.instagram_url
     db.add(p)
     db.commit()
     return {"status": "ok"}
@@ -216,6 +218,62 @@ def add_portfolio_item(
         photos=payload.photos,
         budget_breakdown=payload.budget_breakdown,
     )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return PortfolioOut(
+        id=item.id,
+        title=item.title,
+        event_type=item.event_type,
+        photos=list(item.photos or []),
+        budget_breakdown=dict(item.budget_breakdown or {}),
+    )
+
+
+@router.put(
+    "/portfolio/{item_id}",
+    response_model=PortfolioOut,
+    summary="Edit a listing by id (must be owned by me)",
+    description=(
+        "Edit any listing **by id**. The handler verifies that the listing "
+        "belongs to the authenticated planner. Cross-tenant edits return "
+        "**403 Forbidden** \u2014 the planner role gate alone is not enough."
+    ),
+    responses={
+        401: {"description": "Not authenticated."},
+        403: {
+            "description": "Authenticated planner, but you are not the owner of this listing.",
+            "content": {"application/json": {"example": {"detail": "You can only edit your own listings."}}},
+        },
+        404: {"description": "Listing not found."},
+    },
+)
+def update_portfolio_item_by_id(
+    item_id: uuid.UUID,
+    payload: ListingEdit,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_roles(UserRole.planner))],
+) -> PortfolioOut:
+    """
+    Edit a portfolio item by id with strict ownership enforcement.
+
+    * 401 \u2014 no session cookie (handled by ``require_roles``).
+    * 403 \u2014 caller is not a planner OR the listing belongs to a different
+      planner.
+    * 404 \u2014 listing id does not exist.
+    """
+
+    item = db.get(PortfolioItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found.")
+    profile = db.get(PlannerProfile, item.planner_profile_id)
+    if profile is None or profile.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only edit your own listings.",
+        )
+    item.title = payload.title
+    item.event_type = payload.event_type
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -336,5 +394,29 @@ def delete_availability_block(
     if b is None or b.planner_profile_id != p.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     db.delete(b)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/profile/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete business profile and revert to client",
+    description=(
+        "Permanently removes the planner's business profile, portfolio, availability, "
+        "and any favourites / inquiries attached to it. The underlying user account is "
+        "kept intact and the role is downgraded back to ``client``."
+    ),
+)
+def delete_business_profile(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_roles(UserRole.planner))],
+) -> Response:
+    """Delete the calling planner's profile and demote their role to client."""
+
+    p = _profile_for_user(db, user)
+    db.delete(p)           # cascade removes portfolio, availability, favorites, inquiries
+    user.role = UserRole.client
+    db.add(user)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

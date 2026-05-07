@@ -26,7 +26,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || res.statusText);
+    const err = new Error(text || res.statusText) as Error & { status: number };
+    err.status = res.status;
+    throw err;
   }
   if (res.status === 204) {
     return undefined as T;

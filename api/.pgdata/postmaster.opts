@@ -1,0 +1,1 @@
+/Users/rayvenreynolds/Dev/skillful-marketplace/api/.venv/lib/python3.9/site-packages/pgserver/pginstall/bin/postgres "-D" "/Users/rayvenreynolds/Dev/skillful-marketplace/api/.pgdata" "-h" "" "-k" "/Users/rayvenreynolds/Dev/skillful-marketplace/api/.pgdata"

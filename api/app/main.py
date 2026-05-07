@@ -8,6 +8,39 @@ from app.routers import admin, auth, bookings, checklist, favorites, health, inq
 
 settings = get_settings()
 
+_DESCRIPTION = """
+## Eventsee API
+
+A two-sided marketplace connecting clients with professional event planners.
+
+---
+
+### How to authenticate in Swagger
+
+Click the **Authorize** button (🔒) at the top of this page and enter:
+
+| Username (email) | Password | Role |
+|---|---|---|
+| `alice@example.com` | `password123` | planner |
+| `bob@example.com` | `password123` | planner |
+| `client@example.com` | `password123` | client |
+
+> **Security demo**: Alice can edit her own planner profile and listings.
+> Bob gets **403 Forbidden** when he tries to edit Alice's data.
+> The client account can browse planners but cannot create or edit anything.
+
+---
+
+### Permission rules
+
+| Endpoint group | Unauthenticated | Client | Planner (own) | Planner (other's) |
+|---|---|---|---|---|
+| `GET /v1/public/planners` | ✅ | ✅ | ✅ | ✅ |
+| `PATCH /v1/planner/profile/me` | ❌ 401 | ❌ 403 | ✅ | ❌ 403 |
+| `PUT /v1/planner/portfolio/{id}` | ❌ 401 | ❌ 403 | ✅ | ❌ 403 |
+| `POST /v1/favorites/{id}` | ❌ 401 | ✅ | ❌ 403 | ❌ 403 |
+"""
+
 
 def create_app() -> FastAPI:
     """
@@ -17,7 +50,11 @@ def create_app() -> FastAPI:
         FastAPI: Configured ASGI application.
     """
 
-    app = FastAPI(title="Eventsee API", version="0.1.0")
+    app = FastAPI(
+        title="Eventsee API",
+        version="0.1.0",
+        description=_DESCRIPTION,
+    )
     origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,

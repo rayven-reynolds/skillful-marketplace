@@ -50,6 +50,9 @@ class InquiryStatus(str, enum.Enum):
     """Lifecycle state for planner inquiries."""
 
     open = "open"
+    responded = "responded"
+    booked = "booked"
+    canceled = "canceled"
     closed = "closed"
 
 
@@ -78,6 +81,7 @@ class User(Base):
     display_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole, name="user_role"), nullable=False, default=UserRole.client)
     checklist_progress: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    event_prefs: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     sessions: Mapped[List["SessionToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -113,6 +117,7 @@ class PlannerProfile(Base):
     event_sizes: Mapped[List[str]] = mapped_column(ARRAY(String(64)), default=list)
     specialties: Mapped[List[str]] = mapped_column(ARRAY(String(64)), default=list)
     aesthetic_tags: Mapped[List[str]] = mapped_column(ARRAY(String(64)), default=list)
+    instagram_url: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     response_time_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     premium_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -191,6 +196,8 @@ class Inquiry(Base):
     status: Mapped[InquiryStatus] = mapped_column(Enum(InquiryStatus, name="inquiry_status"), default=InquiryStatus.open)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
+    client_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[client_user_id], lazy="select")
+
 
 class Message(Base):
     """Message on an inquiry thread (MVP: inquiries only)."""
@@ -224,17 +231,25 @@ class Booking(Base):
 
 
 class Review(Base):
-    """Verified review tied to a confirmed booking (client -> planner in MVP)."""
+    """Client review for a planner — either via a confirmed booking or direct."""
 
     __tablename__ = "reviews"
-    __table_args__ = (UniqueConstraint("booking_id", name="uq_review_booking"),)
+    __table_args__ = (
+        UniqueConstraint("booking_id", name="uq_review_booking"),
+        UniqueConstraint("planner_profile_id", "author_user_id", name="uq_review_author_planner"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    booking_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False)
+    booking_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), nullable=True)
+    planner_profile_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("planner_profiles.id", ondelete="CASCADE"), nullable=True
+    )
     author_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     body: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    author: Mapped[Optional["User"]] = relationship("User", foreign_keys=[author_user_id], lazy="select")
 
 
 class ResponseSample(Base):

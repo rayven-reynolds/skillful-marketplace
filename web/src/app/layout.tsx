@@ -1,36 +1,39 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, Playfair_Display } from "next/font/google";
 import { AppNav } from "@/components/AppNav";
+import { AppFooter } from "@/components/AppFooter";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-jakarta",
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const playfair = Playfair_Display({
   subsets: ["latin"],
+  weight: ["700", "800"],
+  style: ["normal", "italic"],
+  variable: "--font-playfair",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "Eventsee — wedding & event planners",
-  description: "Find and book vetted planners with transparent pricing and verified reviews.",
+  description:
+    "Find and book vetted planners with transparent pricing and verified reviews.",
 };
 
-/**
- * Root layout wrapping every page with fonts, navigation, and base styles.
- */
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} min-h-dvh bg-zinc-50 text-zinc-900 antialiased`}>
+    <html lang="en" className={`${jakarta.variable} ${playfair.variable}`}>
+      <body className="min-h-dvh font-sans antialiased selection:bg-sage-tint">
         <AppNav />
-        <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+        <main>{children}</main>
+        <AppFooter />
       </body>
     </html>
   );

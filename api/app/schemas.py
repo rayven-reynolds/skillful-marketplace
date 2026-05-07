@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models import BookingStatus, ClientSegment, UserRole
 
@@ -14,10 +14,29 @@ from app.models import BookingStatus, ClientSegment, UserRole
 class UserOut(BaseModel):
     """Public user fields returned to the client."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     email: EmailStr
     display_name: Optional[str]
     role: UserRole
+    event_prefs: Optional[Dict[str, Any]] = None
+
+
+class ProfileUpdate(BaseModel):
+    """Payload for updating the current user's display name."""
+
+    first_name: str = Field(min_length=1, max_length=60)
+    last_name: Optional[str] = Field(default=None, max_length=60)
+
+
+class EventPrefsIn(BaseModel):
+    """Client event preferences stored on their profile."""
+
+    phone: Optional[str] = Field(default=None, max_length=30)
+    event_date: Optional[str] = Field(default=None)   # ISO date string e.g. "2026-09-20"
+    event_type: Optional[str] = Field(default=None, max_length=80)
+    guest_count: Optional[str] = Field(default=None, max_length=40)
 
 
 class RegisterIn(BaseModel):
@@ -41,6 +60,7 @@ class PlannerPublic(BaseModel):
 
     id: uuid.UUID
     slug: str
+    display_name: Optional[str] = None
     bio: str
     location_text: str
     price_min: int
@@ -53,12 +73,47 @@ class PlannerPublic(BaseModel):
     is_premium: bool
     avg_rating: Optional[float] = None
     review_count: int = 0
+    instagram_url: Optional[str] = None
 
 
 class PlannerDetail(PlannerPublic):
     """Planner profile detail including nested lists."""
 
     timezone: str
+
+
+class BecomePlannerIn(BaseModel):
+    """Payload for the 'become a planner' self-service registration flow."""
+
+    business_name: str = Field(min_length=2, max_length=120)
+    location_text: str = Field(min_length=2, max_length=200)
+    bio: str = ""
+    price_min: int = Field(ge=0, default=0)
+    price_max: int = Field(ge=0, default=0)
+    specialties: List[str] = Field(default_factory=list)
+    planning_styles: List[str] = Field(default_factory=list)
+    event_sizes: List[str] = Field(default_factory=list)
+    aesthetic_tags: List[str] = Field(default_factory=list)
+    timezone: str = "UTC"
+    instagram_url: Optional[str] = None
+    cover_photos: List[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "business_name": "Studio Bloom Events",
+                "location_text": "Austin, TX",
+                "bio": "Boutique full-service wedding planner with 8 years of experience.",
+                "price_min": 3000,
+                "price_max": 12000,
+                "specialties": ["wedding", "micro_wedding"],
+                "planning_styles": ["full_service", "month_of"],
+                "event_sizes": ["under_50", "50_150"],
+                "aesthetic_tags": ["garden_romantic", "modern_minimal"],
+                "timezone": "America/Chicago",
+            }
+        }
+    )
 
 
 class PortfolioOut(BaseModel):
@@ -69,6 +124,34 @@ class PortfolioOut(BaseModel):
     event_type: str
     photos: List[Any]
     budget_breakdown: Dict[str, Any]
+
+
+class ListingPublic(BaseModel):
+    """
+    Portfolio item augmented with owner attribution + an ``is_owner`` flag.
+
+    ``is_owner`` is computed server-side from the request session cookie so the
+    UI can simply render an Edit button when ``is_owner`` is true. It's
+    advisory only — the actual edit endpoint independently re-verifies
+    ownership and returns 403 if the caller is not the owner.
+    """
+
+    id: uuid.UUID
+    title: str
+    event_type: str
+    photos: List[Any]
+    budget_breakdown: Dict[str, Any]
+    planner_profile_id: uuid.UUID
+    planner_slug: str
+    planner_display_name: Optional[str] = None
+    is_owner: bool = False
+
+
+class ListingEdit(BaseModel):
+    """Editable subset of a listing/portfolio item used by the edit form."""
+
+    title: str = Field(min_length=1, max_length=200)
+    event_type: str = ""
 
 
 class AvailabilityBlockOut(BaseModel):
@@ -93,6 +176,7 @@ class PlannerUpsert(BaseModel):
     specialties: List[str] = Field(default_factory=list)
     aesthetic_tags: List[str] = Field(default_factory=list)
     timezone: str = "UTC"
+    instagram_url: Optional[str] = None
 
 
 class PortfolioIn(BaseModel):
@@ -158,6 +242,14 @@ class ReviewOut(BaseModel):
     body: str
     created_at: datetime
     verified: bool = True
+    reviewer_display_name: Optional[str] = None
+
+
+class ReviewIn(BaseModel):
+    """Payload for submitting a direct client review."""
+
+    rating: int = Field(ge=1, le=5)
+    body: str = Field(default="", max_length=2000)
 
 
 class QuizMatchIn(BaseModel):

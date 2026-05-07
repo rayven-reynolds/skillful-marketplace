@@ -18,9 +18,9 @@ def upgrade() -> None:
     """Create enums and tables for the MVP schema."""
 
     bind = op.get_bind()
-    user_role = postgresql.ENUM("client", "planner", "admin", name="user_role", create_type=True)
-    client_segment = postgresql.ENUM("individual", "corporate", name="client_segment", create_type=True)
-    inquiry_status = postgresql.ENUM("open", "closed", name="inquiry_status", create_type=True)
+    user_role = postgresql.ENUM("client", "planner", "admin", name="user_role", create_type=False)
+    client_segment = postgresql.ENUM("individual", "corporate", name="client_segment", create_type=False)
+    inquiry_status = postgresql.ENUM("open", "closed", name="inquiry_status", create_type=False)
     booking_status = postgresql.ENUM(
         "pending_planner",
         "pending_client",
@@ -28,7 +28,7 @@ def upgrade() -> None:
         "declined",
         "cancelled",
         name="booking_status",
-        create_type=True,
+        create_type=False,
     )
     user_role.create(bind, checkfirst=True)
     client_segment.create(bind, checkfirst=True)

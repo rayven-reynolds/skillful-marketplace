@@ -21,6 +21,11 @@ Eventsee MVP: Next.js (`web/`) + FastAPI (`api/`) + PostgreSQL. Premium is admin
 - [x] 🟩 **Planner dashboard + checklist tool** — Dashboard pages, wedding checklist + `/me/checklist` sync.
 - [x] 🟩 **Pytest + README smoke path** — `pytest` (quiz scoring + health), root README runbook.
 
+## Deploy hardening
+
+- [x] 🟩 **Supabase-friendly DB URL handling** — `_normalize_database_url` rewrites `postgres://` and `postgresql://` to the psycopg 3 driver and forces `sslmode=require` when missing. Safe-masked log line on startup confirms the host actually being used.
+- [x] 🟩 **`/v1/health/db` readiness probe** — Runs `SELECT 1` and returns `{status, host, port}` so Railway → Supabase connectivity can be verified with one curl.
+
 ## Remaining (optional next)
 
 - [ ] 🟥 **Stripe** — Checkout + webhooks + `premium_expires_at` self-serve (post-MVP).

@@ -87,10 +87,16 @@ def get_current_user(user: Annotated[Optional[User], Depends(get_optional_user)]
     """
 
     if user is None:
+        # Intentionally omit ``WWW-Authenticate: Basic``. That header forces
+        # browsers to show a native HTTP Basic Auth popup whenever the SPA
+        # makes an unauthenticated XHR (e.g. ``GET /v1/auth/me`` to check
+        # session). The frontend handles 401s by routing to ``/login``;
+        # Swagger UI's "Authorize" button continues to work because it
+        # reads the security scheme from the OpenAPI document, not from
+        # response headers.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
-            headers={"WWW-Authenticate": "Basic"},
         )
     return user
 
